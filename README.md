@@ -57,20 +57,17 @@ I did a bit of back-of-the-envelope math about how much it would cost to run all
 ### MVP
 This should be pretty easy to do. Basically, for each Tweet, we feed it into an LLM. We specify the input and output with a instructions like:
 
-```
-I will give you a short block of text.
+>I will give you a short block of text.
 You should tell me whether or not this piece of text is a prediction or not.
 If it is a prediction, output a 1. If it is not, output a 0.
 Reply only with a 1 or a 0.
-
-```
 
 According to my calculations, we could pre-process all of the existing Twitter data for somewhere between $60-300 using LLMs. I'm not convinced it has to be this expensive. I think possibly we could use models that are simpler than LLMS for this data and do it for a lot cheaper. Not sure yet though.
 
 ### Moonshot
 The initial prompt for the axiom/statement pairing could look something like:
-```
-I will give you two statements separated by an empty line.
+
+>I will give you two statements separated by an empty line.
 Tell me whether or not the two statements agree with each other.
 Do not consider whether or not the statements are actually true, just evaluate whether they
 agree with eachother.
@@ -78,6 +75,5 @@ If they agree, output 'agree'
 If they disagree, output 'disagree'
 If it is not clear, output 'unknown'
 Only output those single words.
-```
 
 This would be prohibitively expensive and slow with the current prices and speeds of LLMs. This is the kind of processing that would need to be done on-the-fly, unlike with the MVP where everything can be pre-processed once. I have absolutely no idea how we could do this.
