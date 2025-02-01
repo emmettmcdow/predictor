@@ -1,9 +1,9 @@
 # Twitter Predictors
 No one can predict the future. But some people have a better intuition for the future than others. I want to build a tool that can identify and rank the people with the best prediction track record.
 
-If you can identify those with a better prediciton track record, you can then listen to them more closely. You can also do the opposite for those with a worse prediction track record.
+If you can identify those with a better prediction track record, you can then listen to them more closely. You can also do the opposite for those with a worse prediction track record.
 
-There is no algorithm for truth. And human language is imprecise. With current technologies, it is impossible to determine algorithmically determine the validity of a statement. However, with LLMs it is possible to categorize whether a statement is a prediction or not.
+There is no algorithm for truth. And human language is imprecise. With current technologies, it is impossible to algorithmically determine the validity of a statement. However, with LLMs it is possible to categorize whether a statement is a prediction or not.
 
 By labeling tweets as predictions or not, the user can judge for themselves and get a better understanding of the accuracy of individuals and groups. 
 
@@ -33,11 +33,11 @@ Add an additional field to the input. This input should be a statement about rea
 
 The interface should then mark each prediction based on that assumption.
 
-- "Tesla stock is going to the moon!" - @someuser on 03/12/2018 - Marked as corect
+- "Tesla stock is going to the moon!" - @someuser on 03/12/2018 - Marked as correct
 - "Covid-19 will never amount to anything" - @someuser on 01/01/2020 - Marked as incorrect
 - "The frontier model firms are BSing, we are not close to AGI" - @someuser on 09/09/2024 - Marked as correct
 
-Each prediction and assumption will be fed to an LLM to determine whether or not the assumption and prediction are in agreeement. If they are in disagreement, it is marked as incorrect. If they are in agreement, it is marked as correct. If it is not relevant, it is thrown out.
+Each prediction and assumption will be fed to an LLM to determine whether or not the assumption and prediction are in agreement. If they are in disagreement, it is marked as incorrect. If they are in agreement, it is marked as correct. If it is not relevant, it is thrown out.
 
 Once we have the predictions labeled, we can then use that data as we like. Saying things like:
 
@@ -57,5 +57,4 @@ I did a bit of back-of-the-envelope math about how much it would cost to run all
 This should be pretty easy to do. According to my calculations, we could pre-process all of the existing Twitter data for somewhere between $60-300 using LLMs. I'm not convinced it has to be this expensive. I think possibly we could use models that are simpler than LLMS for this data and do it for a lot cheaper. Not sure yet though.
 
 ### Moonshot
-This would be prohibitively expensive and slow with the current prices and speeds of LLMs. This is the kind of processing that would be need to be done on-the-fly, unlike with the MVP where everything can be pre-processed once. I have absolutely no idea how we could do this.
-
+This would be prohibitively expensive and slow with the current prices and speeds of LLMs. This is the kind of processing that would need to be done on-the-fly, unlike with the MVP where everything can be pre-processed once. I have absolutely no idea how we could do this.
