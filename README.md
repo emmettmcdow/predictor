@@ -13,7 +13,7 @@ There are two levels to this tool. The MVP, and the moonshot. The MVP is totally
 This is simply a way of browsing predictions. It makes no judgement as to the validity of the predictions.
 
 ### Interface
-#### Input:
+#### Input
 - [Optional] Topic
 - [Optional] User
 - [Optional] Time Frame
@@ -22,7 +22,7 @@ This is simply a way of browsing predictions. It makes no judgement as to the va
 Display predictions that match the query.
 
 
-## Moonshot / Dream Goal
+## Moonshot
 This builds on the MVP and adds more functionality. It takes as input axioms/assumptions and evaluates all of the predictions against those assumptions. 
 
 Add an additional field to the input. This input should be a statement about reality that should be assumed to be true. E.g.
@@ -47,7 +47,13 @@ Once we have the predictions labeled, we can then use that data as we like. Sayi
 - What was the percentage of people that were incorrect or correct?
 
 ## Implementation
-I did a bit of back-of-the-envelope math about how much it would cost to run all of the tweets through an LLM. [Here's the spreadsheet](https://docs.google.com/spreadsheets/d/1qn4xeLueNfpnXzkwkx-J2cEpEcOs-J5LYEia2Pshd48/edit?usp=sharing). There are some variables in the spreadsheet. Here's my source for those:
+For both the MVP and Moonshot we are simply adding extra fields to tweets using an LLM.
+For the MVP, we specify whether or not the tweet is a prediction.
+For the moonshot, we specify whether the prediction-tweet agrees with some axiom.
+
+I did a bit of back-of-the-envelope math about how much it would cost to run all of the tweets through an LLM. [Here's the spreadsheet](https://docs.google.com/spreadsheets/d/1qn4xeLueNfpnXzkwkx-J2cEpEcOs-J5LYEia2Pshd48/edit?usp=sharing).
+There are some variables in the spreadsheet. Here's my source for those:
+
 - N-tweets - 5.1 mil - stated on [community-archive.org](https://www.community-archive.org)
 - Chars / Tweet - 280 - Ignoring longer tweets for simplicity. Using max for estimation purposes.
 - Chars / Token - 4 - Got this from a [random reddit comment](https://www.reddit.com/r/ClaudeAI/comments/1bgg5v0/comment/kv7k57d/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
@@ -55,7 +61,7 @@ I did a bit of back-of-the-envelope math about how much it would cost to run all
 
 
 ### MVP
-This should be pretty easy to do. Basically, for each Tweet, we feed it into an LLM. We specify the input and output with a instructions like:
+This should be pretty easy to do. Basically, for each Tweet, we feed it into an LLM. We specify the input and output with an instruction like:
 
 >I will give you a short block of text.
 You should tell me whether or not this piece of text is a prediction or not.
