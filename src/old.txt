@@ -1,0 +1,94 @@
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Predictor</title>
+  <style>
+    body {
+      display: flex;
+      width: 100dvw;
+      height: 100dvh;
+
+      justify-content: center;
+      align-items: center;
+
+      text-align: center;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+
+      justify-content: center;
+      align-items: center;
+
+      text-align: center;
+    }
+
+    label {
+      display: block;
+    }
+
+    input {
+      display: block;
+    }
+
+    .hr-even {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+  </style>
+
+</head>
+
+<body>
+  <script type="module">
+    import {pipeline, env} from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0';
+    env.allowLocalModels = false;
+    // Can pick any model from here:
+    //  https://huggingface.co/models?other=feature-extraction
+    const model_name = 'nomic-ai/nomic-embed-text-v1.5'
+
+    const embedder = await pipeline('feature-extraction', model_name,
+      {
+        quantized: true,
+        progress_callback: data => {
+          const {progress, loaded, total} = data
+          if (progress) {
+            const totalMB = Math.round(total / (1024 * 1024))
+            const loadedMB = Math.round(loaded / (1024 * 1024))
+
+            console.log(`${Math.round(progress)}% (${loadedMB}/${totalMB} mb)`);
+          }
+        }
+      });
+
+    const inputText = 'Hello world!'
+    const embeddingVector = (await embedder(inputText, {pooling: 'mean', normalize: true})).data
+  </script>
+
+  <dev>
+    <h1>
+      Polarized Words
+    </h1>
+    <form>
+      <label for="topic">topic</label>
+      <input></input>
+      <div class="hr-even">
+        <div>
+          <label for="topic">start date</label>
+          <input type="date"></input>
+        </div>
+        <div>
+          <label for="topic">end date</label>
+          <input type="date"></input>
+        </div>
+      </div>
+    </form>
+  </dev>
+
+</body>
+
+</html>
