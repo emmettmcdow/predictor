@@ -1,10 +1,20 @@
 import { ChangeEvent, useEffect, useState } from "react";
+import {
+  FeatureExtractionPipeline,
+  pipeline,
+  ProgressInfo,
+  env,
+  DataArray,
+} from "@huggingface/transformers";
 import "./App.css";
 import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = "https://fabxmporizzqflnftavs.supabase.co";
 const supabaseKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhYnhtcG9yaXp6cWZsbmZ0YXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjIyNDQ5MTIsImV4cCI6MjAzNzgyMDkxMn0.UIEJiUNkLsW28tBHmG-RQDW-I5JNlJLt62CSk9D_qG8";
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+env.allowLocalModels = false;
+env.useBrowserCache = false;
 
 interface TweetProps {
   tweet: Tweet;
@@ -78,6 +88,7 @@ const TweetDisplay: React.FC<TweetProps> = ({ tweet, idx }) => {
       {/* Footer */}
       <div className="text-gray-500 text-sm">
         <span>{getTimeAgo(tweet.created_at)}</span>
+        <span> - {tweet.score}</span>
       </div>
     </div>
   );
@@ -89,6 +100,7 @@ interface Tweet {
   avatar: string;
   full_text: string;
   created_at: Date;
+  score: number;
 }
 
 interface Config {
@@ -98,17 +110,72 @@ interface Config {
   replies: boolean;
 }
 
+interface Embedder {
+  good: DataArray;
+  bad: DataArray;
+  pipe: FeatureExtractionPipeline;
+  state: string;
+}
+
+const dotProduct = (vecA: DataArray, vecB: DataArray) => {
+  if (vecA.length !== vecB.length) {
+    throw new Error("Vectors must have the same length");
+  }
+  return vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+};
+
+// Calculate magnitude (length) of a vector
+const magnitude = (vec: DataArray) => {
+  return Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0));
+};
+
+const cosineSimilarity = (vecA: DataArray, vecB: DataArray) => {
+  if (vecA.length !== vecB.length) {
+    throw new Error("Vectors must have the same length");
+  }
+
+  const dot = dotProduct(vecA, vecB);
+  const magA = magnitude(vecA);
+  const magB = magnitude(vecB);
+
+  if (magA === 0 || magB === 0) {
+    throw new Error("Cannot calculate cosine similarity for zero vector");
+  }
+
+  return dot / (magA * magB);
+};
+
+const getScore = async (text: string, embed: Embedder) => {
+  let thisEmbed = (await embed.pipe(text, { pooling: "mean", normalize: true }))
+    .data;
+  const goodSim = cosineSimilarity(thisEmbed, embed.good);
+  const badSim = cosineSimilarity(thisEmbed, embed.bad);
+
+  const score = goodSim / (goodSim + badSim);
+  console.log(`Score for ${text} is ${score}`);
+
+  return score;
+};
+
 function App() {
   const today = new Date();
   const lastYear = new Date();
   lastYear.setFullYear(lastYear.getFullYear() - 1);
+
   const [tweets, setTweets] = useState<Tweet[]>([]);
+  const [calculated, setCalculated] = useState<string>("unstarted");
+  const [embedder, setEmbedder] = useState<Embedder>({
+    state: "unitialized",
+  });
+  const [embedLoadProgress, setProgress] = useState("");
   const [config, setConfig] = useState<Config>({
     topic: "community",
     start_date: lastYear,
     end_date: today,
     replies: false,
   });
+
+  const sampleSize = 2;
 
   const getTweets = (config: Config) => {
     if (config.replies) {
@@ -121,12 +188,14 @@ function App() {
         .like("full_text", `%${config.topic}%`)
         .filter("created_at", "gte", config.start_date.toISOString())
         .filter("created_at", "lte", config.end_date.toISOString())
-        .limit(100)
+        .limit(sampleSize)
         .then((data) => {
           // let newTweets: Tweet[] = tweets.slice();
           let newTweets: Tweet[] = [];
-          console.log(data.data);
           data.data?.forEach((x, _) => {
+            if (x.full_text.length > 280) {
+              return;
+            }
             newTweets.push({
               name: x.accounts.account_display_name,
               username: x.accounts.username,
@@ -148,11 +217,9 @@ function App() {
         .filter("created_at", "gte", config.start_date.toISOString())
         .filter("created_at", "lte", config.end_date.toISOString())
         .is("reply_to_username", null)
-        .limit(100)
+        .limit(sampleSize)
         .then((data) => {
-          // let newTweets: Tweet[] = tweets.slice();
           let newTweets: Tweet[] = [];
-          console.log(data.data);
           data.data?.forEach((x, _) => {
             newTweets.push({
               name: x.accounts.account_display_name,
@@ -168,7 +235,6 @@ function App() {
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    console.log(e.target.id);
     switch (e.target.id) {
       case "start_date":
       case "end_date":
@@ -183,13 +249,68 @@ function App() {
     }
   };
 
+  const initEmbedder = async () => {
+    const model_name = "nomic-ai/nomic-embed-text-v1.5";
+    try {
+      setEmbedder({ state: "loading" });
+      const pipe = await pipeline("feature-extraction", model_name, {
+        dtype: "q8",
+        progress_callback: (data: ProgressInfo) => {
+          if (data.status == "progress") {
+            const { progress, total, loaded } = data;
+            if (progress) {
+              const totalMB = Math.round(total / (1024 * 1024));
+              const loadedMB = Math.round(loaded / (1024 * 1024));
+
+              setProgress(
+                `${Math.round(progress)}% (${loadedMB}/${totalMB} mb)`,
+              );
+            }
+          }
+        },
+      });
+      let good = (await pipe("good", { pooling: "mean", normalize: true }))
+        .data;
+      let bad = (await pipe("bad", { pooling: "mean", normalize: true })).data;
+      const state = "ready";
+      setEmbedder({ pipe, good, bad, state });
+    } catch (err) {
+      throw new Error("Failed to initialize the embedding pipeline: " + err);
+    }
+  };
+
+  const getScores = async (embedder: Embedder, tweets: Tweet[]) => {
+    setCalculated("running");
+    const newTweets = await Promise.all(
+      tweets.map(async (tweet) => {
+        return {
+          ...tweet,
+          score: await getScore(tweet.full_text, embedder),
+        };
+      }),
+    );
+    setCalculated("completed");
+    setTweets(newTweets);
+  };
+
   useEffect(() => {
-    getTweets(config);
-  }, [config]);
+    if (embedder.state == "unitialized") initEmbedder();
+    if (tweets.length == 0) getTweets(config);
+    if (
+      embedder &&
+      embedder.state == "ready" &&
+      tweets.length != 0 &&
+      calculated == "unstarted"
+    ) {
+      console.log("Can run embedder");
+      getScores(embedder, tweets);
+    }
+  }, [config, embedder, tweets]);
 
   return (
     <div className="w-dvw h-full flex flex-col justify-between overflow-hidden">
       <div>This is the display</div>
+      <div>{embedLoadProgress}</div>
 
       <div className="fixed w-1/3  right-0 top-0 bottom-20 p-4 border-l-1 rounded-lg flex flex-col space-y-2 justify-start bg-gray-900">
         <div key="fixed top-0">Tweets</div>
