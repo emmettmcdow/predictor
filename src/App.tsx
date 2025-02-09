@@ -101,38 +101,70 @@ interface Config {
 function App() {
   const today = new Date();
   const lastYear = new Date();
-  lastYear.setMonth(lastYear.getMonth() - 1);
+  lastYear.setFullYear(lastYear.getFullYear() - 1);
   const [tweets, setTweets] = useState<Tweet[]>([]);
   const [config, setConfig] = useState<Config>({
     topic: "community",
     start_date: lastYear,
     end_date: today,
-    replies: true,
+    replies: false,
   });
 
-  const getTweets = (tweets: Tweet[], config: Config) => {
-    supabase
-      .rpc("search_tweets", {
-        search_query: config.topic,
-        since_date: config.start_date.toISOString(),
-        until_date: config.end_date.toISOString(),
-        limit_: 5,
-      })
-      .then((data) => {
-        // let newTweets: Tweet[] = tweets.slice();
-        let newTweets: Tweet[] = [];
-        console.log(data.data);
-        data.data?.forEach((x, _) => {
-          newTweets.push({
-            name: x.account.account_display_name,
-            username: x.account.username,
-            avatar: "",
-            full_text: x.full_text,
-            created_at: new Date(x.created_at),
+  const getTweets = (config: Config) => {
+    if (config.replies) {
+      supabase
+        .schema("public")
+        .from("tweets")
+        .select(
+          "full_text, created_at, accounts:account_id ( username, account_display_name )",
+        )
+        .like("full_text", `%${config.topic}%`)
+        .filter("created_at", "gte", config.start_date.toISOString())
+        .filter("created_at", "lte", config.end_date.toISOString())
+        .limit(100)
+        .then((data) => {
+          // let newTweets: Tweet[] = tweets.slice();
+          let newTweets: Tweet[] = [];
+          console.log(data.data);
+          data.data?.forEach((x, _) => {
+            newTweets.push({
+              name: x.accounts.account_display_name,
+              username: x.accounts.username,
+              avatar: "",
+              full_text: x.full_text,
+              created_at: new Date(x.created_at),
+            });
           });
+          setTweets(newTweets);
         });
-        setTweets(newTweets);
-      });
+    } else {
+      supabase
+        .schema("public")
+        .from("tweets")
+        .select(
+          "full_text, created_at, accounts:account_id ( username, account_display_name )",
+        )
+        .like("full_text", `%${config.topic}%`)
+        .filter("created_at", "gte", config.start_date.toISOString())
+        .filter("created_at", "lte", config.end_date.toISOString())
+        .is("reply_to_username", null)
+        .limit(100)
+        .then((data) => {
+          // let newTweets: Tweet[] = tweets.slice();
+          let newTweets: Tweet[] = [];
+          console.log(data.data);
+          data.data?.forEach((x, _) => {
+            newTweets.push({
+              name: x.accounts.account_display_name,
+              username: x.accounts.username,
+              avatar: "",
+              full_text: x.full_text,
+              created_at: new Date(x.created_at),
+            });
+          });
+          setTweets(newTweets);
+        });
+    }
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -152,23 +184,24 @@ function App() {
   };
 
   useEffect(() => {
-    console.log(config);
-    getTweets(tweets, config);
+    getTweets(config);
   }, [config]);
 
   return (
     <div className="w-dvw h-full flex flex-col justify-between overflow-hidden">
       <div>This is the display</div>
 
-      <div className="absolute h-full w-1/3 top-0 right-0 p-4 border-l-1 rounded-lg flex flex-col space-y-2 justify-start overflow-auto bg-gray-900">
-        <div key="na">Tweets</div>
-        {tweets &&
-          tweets.map((tweet: Tweet, i: number) => (
-            <TweetDisplay tweet={tweet} idx={i} />
-          ))}
+      <div className="fixed w-1/3  right-0 top-0 bottom-20 p-4 border-l-1 rounded-lg flex flex-col space-y-2 justify-start bg-gray-900">
+        <div key="fixed top-0">Tweets</div>
+        <div className="overflow-auto">
+          {tweets &&
+            tweets.map((tweet: Tweet, i: number) => (
+              <TweetDisplay tweet={tweet} idx={i} />
+            ))}
+        </div>
       </div>
 
-      <div className="absolute w-dvw bottom-0 left-0 p-4 border-t-1 rounded-lg bg-gray-900 overflow-hidden">
+      <div className="fixed w-dvw bottom-0 left-0 p-4 border-t-1 rounded-lg bg-gray-900 overflow-hidden">
         <form className="flex flex-row justify-start align-center space-x-4">
           <div className="flex flex-col">
             <input
