@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import "./App.css";
 import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = "https://fabxmporizzqflnftavs.supabase.co";
@@ -7,10 +7,12 @@ const supabaseKey =
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface TweetProps {
-  tweet: TweeT;
+  tweet: Tweet;
   idx: number;
 }
-// TODO
+const dateToInputValue = (date: Date) => {
+  return date.toISOString().split("T")[0];
+};
 function getTimeAgo(date: Date): string {
   const timeDifference = Date.now() - date.valueOf();
 
@@ -21,22 +23,41 @@ function getTimeAgo(date: Date): string {
   const months = Math.floor(days / 30);
   const years = Math.floor(days / 365);
 
+  let plural = "";
   if (seconds < 60) {
-    return `${seconds} seconds ago`;
+    if (seconds != 1) {
+      plural = "s";
+    }
+    return `${seconds} second${plural} ago`;
   } else if (minutes < 60) {
-    return `${minutes} minutes ago`;
+    if (minutes != 1) {
+      plural = "s";
+    }
+    return `${minutes} minute${plural} ago`;
   } else if (hours < 24) {
-    return `${hours} hours ago`;
+    if (hours != 1) {
+      plural = "s";
+    }
+    return `${hours} hour${plural} ago`;
   } else if (days < 30) {
-    return `${days} days ago`;
+    if (days != 1) {
+      plural = "s";
+    }
+    return `${days} day${plural} ago`;
   } else if (months < 12) {
-    return `${months} months ago`;
+    if (months != 1) {
+      plural = "s";
+    }
+    return `${months} month${plural} ago`;
   } else {
-    return `${years} years ago`;
+    if (years != 1) {
+      plural = "s";
+    }
+    return `${years} year${plural} ago`;
   }
 }
 
-const Tweet: React.FC<TweetProps> = ({ tweet, idx }) => {
+const TweetDisplay: React.FC<TweetProps> = ({ tweet, idx }) => {
   return (
     <div
       key={idx}
@@ -56,13 +77,13 @@ const Tweet: React.FC<TweetProps> = ({ tweet, idx }) => {
 
       {/* Footer */}
       <div className="text-gray-500 text-sm">
-        <span>{tweet.created_at.toString()}</span>
+        <span>{getTimeAgo(tweet.created_at)}</span>
       </div>
     </div>
   );
 };
 
-interface TweeT {
+interface Tweet {
   name: string;
   username: string;
   avatar: string;
@@ -70,31 +91,70 @@ interface TweeT {
   created_at: Date;
 }
 
-function App() {
-  const [tweets, setTweets] = useState<TweeT[]>([]);
+interface Config {
+  topic: string;
+  start_date: Date;
+  end_date: Date;
+  replies: boolean;
+}
 
-  useEffect(() => {
+function App() {
+  const today = new Date();
+  const lastYear = new Date();
+  lastYear.setMonth(lastYear.getMonth() - 1);
+  const [tweets, setTweets] = useState<Tweet[]>([]);
+  const [config, setConfig] = useState<Config>({
+    topic: "community",
+    start_date: lastYear,
+    end_date: today,
+    replies: true,
+  });
+
+  const getTweets = (tweets: Tweet[], config: Config) => {
     supabase
-      .schema("public")
-      .from("tweets")
-      .select(
-        "full_text, created_at, account_id, account:account_id ( account_display_name, username )",
-      )
-      .limit(5)
+      .rpc("search_tweets", {
+        search_query: config.topic,
+        since_date: config.start_date.toISOString(),
+        until_date: config.end_date.toISOString(),
+        limit_: 5,
+      })
       .then((data) => {
-        let newTweets: TweeT[] = tweets.slice();
+        // let newTweets: Tweet[] = tweets.slice();
+        let newTweets: Tweet[] = [];
+        console.log(data.data);
         data.data?.forEach((x, _) => {
           newTweets.push({
             name: x.account.account_display_name,
             username: x.account.username,
             avatar: "",
             full_text: x.full_text,
-            created_at: x.created_at,
+            created_at: new Date(x.created_at),
           });
         });
         setTweets(newTweets);
       });
-  }, []);
+  };
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    console.log(e.target.id);
+    switch (e.target.id) {
+      case "start_date":
+      case "end_date":
+        setConfig({ ...config, [e.target.id]: new Date(e.target.value) });
+        break;
+      case "replies":
+        setConfig({ ...config, [e.target.id]: e.target.checked });
+        break;
+      default:
+        setConfig({ ...config, [e.target.id]: e.target.value });
+        break;
+    }
+  };
+
+  useEffect(() => {
+    console.log(config);
+    getTweets(tweets, config);
+  }, [config]);
 
   return (
     <div className="w-dvw h-full flex flex-col justify-between overflow-hidden">
@@ -103,28 +163,52 @@ function App() {
       <div className="absolute h-full w-1/3 top-0 right-0 p-4 border-l-1 rounded-lg flex flex-col space-y-2 justify-start overflow-auto bg-gray-900">
         <div key="na">Tweets</div>
         {tweets &&
-          tweets.map((tweet: TweeT, i: number) => (
-            <Tweet tweet={tweet} idx={i} />
+          tweets.map((tweet: Tweet, i: number) => (
+            <TweetDisplay tweet={tweet} idx={i} />
           ))}
       </div>
 
       <div className="absolute w-dvw bottom-0 left-0 p-4 border-t-1 rounded-lg bg-gray-900 overflow-hidden">
         <form className="flex flex-row justify-start align-center space-x-4">
           <div className="flex flex-col">
-            <input id="topic" className="bg-slate-700 rounded-lg"></input>
+            <input
+              id="topic"
+              className="bg-slate-700 rounded-lg"
+              value={config.topic}
+              onChange={handleChange}
+            ></input>
             <label htmlFor="topic">Topic</label>
           </div>
           <div className="flex flex-row space-x-4">
             <div className="flex flex-col align-vernter">
-              <input id="start" type="date"></input>
+              <input
+                id="start_date"
+                type="date"
+                value={dateToInputValue(config.start_date)}
+                onChange={handleChange}
+              ></input>
               <label htmlFor="start">Start Date</label>
             </div>
             <div className="flex flex-col bg-g">
-              <input id="end" type="date"></input>
+              <input
+                id="end_date"
+                type="date"
+                value={dateToInputValue(config.end_date)}
+                onChange={handleChange}
+              ></input>
               <label htmlFor="end">End Date</label>
             </div>
+            <div className="flex flex-col bg-g">
+              <input
+                id="replies"
+                type="checkbox"
+                className="mx-auto"
+                checked={config.replies}
+                onChange={handleChange}
+              ></input>
+              <label htmlFor="replies">Incl. Replies</label>
+            </div>
           </div>
-          <button>Get</button>
         </form>
       </div>
     </div>
