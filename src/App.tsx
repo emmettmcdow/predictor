@@ -8,9 +8,11 @@ import {
 } from "@huggingface/transformers";
 import "./App.css";
 import { createClient } from "@supabase/supabase-js";
-const supabaseUrl = "https://fabxmporizzqflnftavs.supabase.co";
+// const supabaseUrl = "https://fabxmporizzqflnftavs.supabase.co";
+const supabaseUrl = "http://127.0.0.1:54321";
 const supabaseKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhYnhtcG9yaXp6cWZsbmZ0YXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjIyNDQ5MTIsImV4cCI6MjAzNzgyMDkxMn0.UIEJiUNkLsW28tBHmG-RQDW-I5JNlJLt62CSk9D_qG8";
+  // "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhYnhtcG9yaXp6cWZsbmZ0YXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjIyNDQ5MTIsImV4cCI6MjAzNzgyMDkxMn0.UIEJiUNkLsW28tBHmG-RQDW-I5JNlJLt62CSk9D_qG8";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 env.allowLocalModels = false;
@@ -165,8 +167,9 @@ function App() {
   const [tweets, setTweets] = useState<Tweet[]>([]);
   const [calculated, setCalculated] = useState<string>("unstarted");
   const [embedder, setEmbedder] = useState<Embedder>({
-    state: "unitialized",
+    state: "uninitialized",
   });
+  const [tweetState, setTweetState] = useState<string>("uninitialized");
   const [embedLoadProgress, setProgress] = useState("");
   const [config, setConfig] = useState<Config>({
     topic: "community",
@@ -178,6 +181,7 @@ function App() {
   const sampleSize = 2;
 
   const getTweets = (config: Config) => {
+    setTweetState("running");
     if (config.replies) {
       supabase
         .schema("public")
@@ -204,6 +208,7 @@ function App() {
               created_at: new Date(x.created_at),
             });
           });
+          setTweetState("done");
           setTweets(newTweets);
         });
     } else {
@@ -214,8 +219,8 @@ function App() {
           "full_text, created_at, accounts:account_id ( username, account_display_name )",
         )
         .like("full_text", `%${config.topic}%`)
-        .filter("created_at", "gte", config.start_date.toISOString())
-        .filter("created_at", "lte", config.end_date.toISOString())
+        // .filter("created_at", "gte", config.start_date.toISOString())
+        // .filter("created_at", "lte", config.end_date.toISOString())
         .is("reply_to_username", null)
         .limit(sampleSize)
         .then((data) => {
@@ -229,12 +234,14 @@ function App() {
               created_at: new Date(x.created_at),
             });
           });
+          setTweetState("done");
           setTweets(newTweets);
         });
     }
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setTweetState("uninitialized");
     switch (e.target.id) {
       case "start_date":
       case "end_date":
@@ -294,8 +301,8 @@ function App() {
   };
 
   useEffect(() => {
-    if (embedder.state == "unitialized") initEmbedder();
-    if (tweets.length == 0) getTweets(config);
+    if (embedder.state == "uninitialized") initEmbedder();
+    if (tweetState == "uninitialized") getTweets(config);
     if (
       embedder &&
       embedder.state == "ready" &&
