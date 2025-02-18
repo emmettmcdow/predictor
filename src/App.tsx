@@ -4,7 +4,6 @@ import {
   pipeline,
   ProgressInfo,
   env,
-  DataArray,
 } from "@huggingface/transformers";
 import "./App.css";
 import { createClient } from "@supabase/supabase-js";
@@ -113,25 +112,28 @@ interface Config {
 }
 
 interface Embedder {
-  good: DataArray;
-  bad: DataArray;
-  pipe: FeatureExtractionPipeline;
+  good: Float32Array;
+  bad: Float32Array;
+  pipe: FeatureExtractionPipeline | null;
   state: string;
 }
 
-const dotProduct = (vecA: DataArray, vecB: DataArray) => {
+const dotProduct = (vecA: Float32Array, vecB: Float32Array) => {
   if (vecA.length !== vecB.length) {
     throw new Error("Vectors must have the same length");
   }
-  return vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+  return vecA.reduce(
+    (sum: number, a: number, i: number, _: Float32Array) => sum + a * vecB[i],
+    0,
+  );
 };
 
 // Calculate magnitude (length) of a vector
-const magnitude = (vec: DataArray) => {
+const magnitude = (vec: Float32Array) => {
   return Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0));
 };
 
-const cosineSimilarity = (vecA: DataArray, vecB: DataArray) => {
+const cosineSimilarity = (vecA: Float32Array, vecB: Float32Array) => {
   if (vecA.length !== vecB.length) {
     throw new Error("Vectors must have the same length");
   }
@@ -148,16 +150,23 @@ const cosineSimilarity = (vecA: DataArray, vecB: DataArray) => {
 };
 
 const getScore = async (text: string, embed: Embedder) => {
+  if (embed.pipe == null) {
+    throw new Error("Embedding pipeline not yet initialized");
+  }
   let thisEmbed = (await embed.pipe(text, { pooling: "mean", normalize: true }))
-    .data;
+    .data as Float32Array;
   const goodSim = cosineSimilarity(thisEmbed, embed.good);
   const badSim = cosineSimilarity(thisEmbed, embed.bad);
 
   const score = goodSim / (goodSim + badSim);
-  console.log(`Score for ${text} is ${score}`);
 
   return score;
 };
+
+// https://github.com/supabase/postgrest-js/issues/471#issuecomment-1696522983
+function fixOneToOne<T>(object: T[]): T {
+  return object as T;
+}
 
 function App() {
   const today = new Date();
@@ -167,6 +176,9 @@ function App() {
   const [tweets, setTweets] = useState<Tweet[]>([]);
   const [calculated, setCalculated] = useState<string>("unstarted");
   const [embedder, setEmbedder] = useState<Embedder>({
+    good: new Float32Array(),
+    bad: new Float32Array(),
+    pipe: null,
     state: "uninitialized",
   });
   const [tweetState, setTweetState] = useState<string>("uninitialized");
@@ -182,62 +194,38 @@ function App() {
 
   const getTweets = (config: Config) => {
     setTweetState("running");
-    if (config.replies) {
-      supabase
-        .schema("public")
-        .from("tweets")
-        .select(
-          "full_text, created_at, accounts:account_id ( username, account_display_name )",
-        )
-        .like("full_text", `%${config.topic}%`)
-        .filter("created_at", "gte", config.start_date.toISOString())
-        .filter("created_at", "lte", config.end_date.toISOString())
-        .limit(sampleSize)
-        .then((data) => {
-          // let newTweets: Tweet[] = tweets.slice();
-          let newTweets: Tweet[] = [];
-          data.data?.forEach((x, _) => {
-            if (x.full_text.length > 280) {
-              return;
-            }
-            newTweets.push({
-              name: x.accounts.account_display_name,
-              username: x.accounts.username,
-              avatar: "",
-              full_text: x.full_text,
-              created_at: new Date(x.created_at),
-            });
-          });
-          setTweetState("done");
-          setTweets(newTweets);
-        });
-    } else {
-      supabase
-        .schema("public")
-        .from("tweets")
-        .select(
-          "full_text, created_at, accounts:account_id ( username, account_display_name )",
-        )
-        .like("full_text", `%${config.topic}%`)
-        // .filter("created_at", "gte", config.start_date.toISOString())
-        // .filter("created_at", "lte", config.end_date.toISOString())
-        .is("reply_to_username", null)
-        .limit(sampleSize)
-        .then((data) => {
-          let newTweets: Tweet[] = [];
-          data.data?.forEach((x, _) => {
-            newTweets.push({
-              name: x.accounts.account_display_name,
-              username: x.accounts.username,
-              avatar: "",
-              full_text: x.full_text,
-              created_at: new Date(x.created_at),
-            });
-          });
-          setTweetState("done");
-          setTweets(newTweets);
-        });
+    let baseCall = supabase
+      .schema("public")
+      .from("tweets")
+      .select(
+        "full_text, created_at, accounts:account_id ( username, account_display_name )",
+      )
+      .like("full_text", `%${config.topic}%`)
+      .filter("created_at", "gte", config.start_date.toISOString())
+      .filter("created_at", "lte", config.end_date.toISOString());
+
+    if (!config.replies) {
+      baseCall = baseCall.is("reply_to_username", null);
     }
+
+    baseCall.limit(sampleSize).then((data) => {
+      let newTweets: Tweet[] = [];
+      data.data?.forEach((x, _) => {
+        if (x.full_text.length > 280) {
+          return;
+        }
+        newTweets.push({
+          name: fixOneToOne(x.accounts).account_display_name,
+          username: fixOneToOne(x.accounts).username,
+          avatar: "",
+          full_text: x.full_text,
+          created_at: new Date(x.created_at),
+          score: 0.0,
+        });
+      });
+      setTweetState("done");
+      setTweets(newTweets);
+    });
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -259,7 +247,7 @@ function App() {
   const initEmbedder = async () => {
     const model_name = "nomic-ai/nomic-embed-text-v1.5";
     try {
-      setEmbedder({ state: "loading" });
+      setEmbedder({ ...embedder, state: "loading" });
       const pipe = await pipeline("feature-extraction", model_name, {
         dtype: "q8",
         progress_callback: (data: ProgressInfo) => {
@@ -277,8 +265,9 @@ function App() {
         },
       });
       let good = (await pipe("good", { pooling: "mean", normalize: true }))
-        .data;
-      let bad = (await pipe("bad", { pooling: "mean", normalize: true })).data;
+        .data as Float32Array;
+      let bad = (await pipe("bad", { pooling: "mean", normalize: true }))
+        .data as Float32Array;
       const state = "ready";
       setEmbedder({ pipe, good, bad, state });
     } catch (err) {
@@ -309,7 +298,6 @@ function App() {
       tweets.length != 0 &&
       calculated == "unstarted"
     ) {
-      console.log("Can run embedder");
       getScores(embedder, tweets);
     }
   }, [config, embedder, tweets]);
